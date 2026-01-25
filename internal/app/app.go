@@ -37,6 +37,7 @@ func (a *application) Run() <-chan error {
 				a.handleMsg(msg)
 			case <-a.stopChan:
 				a.log.Info("Stopping main worker thread")
+                return
 			}
 		}
 	}()
