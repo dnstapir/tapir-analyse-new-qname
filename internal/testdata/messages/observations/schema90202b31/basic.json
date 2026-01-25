@@ -1,0 +1,19 @@
+{
+    "src_name": "dns-tapir",
+    "creator": "",
+    "msg_type": "observation",
+    "list_type": "doubtlist",
+    "added": [
+        {
+            "name": "basic.tapirtest.xa.",
+            "time_added": "2025-12-24T00:00:00Z",
+            "ttl": 3600,
+            "tag_mask": 1024,
+            "extended_tags": []
+        }
+    ],
+    "removed": [],
+    "msg": "",
+    "timestamp": "2025-12-25T00:00:00Z",
+    "time_str": ""
+}
