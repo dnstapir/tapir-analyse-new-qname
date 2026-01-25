@@ -25,11 +25,11 @@ func TestAppDummy(t *testing.T) {
 		t.Fatalf("Error creating tapir handle: %s", err)
 	}
 
-    vConf := schemaval.Conf{
-        SchemaDir: testdata.SchemaDir,
-        Log: log,
-    }
-    val, err := schemaval.Create(vConf)
+	vConf := schemaval.Conf{
+		SchemaDir: testdata.SchemaDir,
+		Log:       log,
+	}
+	val, err := schemaval.Create(vConf)
 	if err != nil {
 		t.Fatalf("Error creating schema validator: '%s', exiting...\n", err)
 	}
@@ -38,7 +38,7 @@ func TestAppDummy(t *testing.T) {
 		Log:       log,
 		Nats:      nats,
 		Tapir:     tapir,
-        Validator: val,
+		Validator: val,
 	}
 
 	application, err := Create(appConf)
@@ -46,10 +46,10 @@ func TestAppDummy(t *testing.T) {
 		t.Fatalf("Error creating app: %s", err)
 	}
 
-    natsMsg := common.NatsMsg {
-        Data: []byte(testdata.MsgNewQname90202b31Basic),
-        Headers: map[string]string{common.NATSHEADER_KEY_THUMBPRINT: "test-thumbprint"},
-    }
+	natsMsg := common.NatsMsg{
+		Data:    []byte(testdata.MsgNewQname90202b31Basic),
+		Headers: map[string]string{common.NATSHEADER_KEY_THUMBPRINT: "test-thumbprint"},
+	}
 	application.handleMsg(natsMsg)
 
 	got := nats.latestPublished
@@ -58,7 +58,7 @@ func TestAppDummy(t *testing.T) {
 		t.Fatalf("Validation failed for %s", got)
 	}
 
-    if len(nats.domainStorage) != 1 {
-        t.Fatalf("unexpected number of entries in domain storage. Got: %d, expected: %d", len(nats.domainStorage), 1)
-    }
+	if len(nats.domainStorage) != 1 {
+		t.Fatalf("unexpected number of entries in domain storage. Got: %d, expected: %d", len(nats.domainStorage), 1)
+	}
 }

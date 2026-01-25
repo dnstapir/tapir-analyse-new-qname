@@ -9,6 +9,6 @@ var NATSHEADERS_DNSTAPIR_ALL = []string{
 }
 
 type NatsMsg struct {
-    Headers map[string]string
-    Data    []byte
+	Headers map[string]string
+	Data    []byte
 }

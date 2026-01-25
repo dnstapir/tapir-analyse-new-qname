@@ -2,10 +2,10 @@ package nats
 
 import (
 	"context"
-    "errors"
-    "slices"
-    "strconv"
-    "time"
+	"errors"
+	"slices"
+	"strconv"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -13,15 +13,15 @@ import (
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
 )
 
-const c_SUBJECT_SCRATCHPAD_PREFIX = "scratchpad" // TODO make configurable
-const c_BUCKET_NAME               = c_SUBJECT_SCRATCHPAD_PREFIX // TODO make configurable
-const c_DEFAULT_TTL               = 60 /* seconds */ // TODO make configurable
-const c_LIMITMARKER_TTL           = 1 /* seconds */ // TODO make configurable
+const c_SUBJECT_SCRATCHPAD_PREFIX = "scratchpad"  // TODO make configurable
+const c_BUCKET_NAME = c_SUBJECT_SCRATCHPAD_PREFIX // TODO make configurable
+const c_DEFAULT_TTL = 60                          /* seconds */ // TODO make configurable
+const c_LIMITMARKER_TTL = 1                       /* seconds */ // TODO make configurable
 
 type Conf struct {
 	Url        string
-    OutSubject string
-    InSubject  string
+	OutSubject string
+	InSubject  string
 	Log        common.Logger
 }
 
@@ -40,22 +40,22 @@ func Create(conf Conf) (*natsClient, error) {
 
 	nc.url = conf.Url // TODO validate
 
-    if conf.Log == nil {
-        return nil, errors.New("nil logger")
-    }
-    nc.log = conf.Log
+	if conf.Log == nil {
+		return nil, errors.New("nil logger")
+	}
+	nc.log = conf.Log
 
-    if conf.OutSubject == "" || conf.InSubject == "" {
-        return nil, errors.New("bad nats subject")
-    }
-    nc.outSubject = conf.OutSubject
-    nc.inSubject = conf.InSubject
+	if conf.OutSubject == "" || conf.InSubject == "" {
+		return nil, errors.New("bad nats subject")
+	}
+	nc.outSubject = conf.OutSubject
+	nc.inSubject = conf.InSubject
 
-    err := nc.initNats()
-    if err != nil {
-        nc.log.Error("Error initializing NATS")
-        return nil, err
-    }
+	err := nc.initNats()
+	if err != nil {
+		nc.log.Error("Error initializing NATS")
+		return nil, err
+	}
 
 	return nc, nil
 }
@@ -75,15 +75,15 @@ func (nc *natsClient) Subscribe() (<-chan common.NatsMsg, error) {
 	outCh := make(chan common.NatsMsg)
 	go func() {
 		for msg := range rawCh {
-            natsMsg := common.NatsMsg {
-                Headers: make(map[string]string),
-                Data: msg.Data,
-            }
-            for h,v := range msg.Header {
-                if slices.Contains(common.NATSHEADERS_DNSTAPIR_ALL, h) {
-                    natsMsg.Headers[h] = v[0] // TODO use entire slice?
-                }
-            }
+			natsMsg := common.NatsMsg{
+				Headers: make(map[string]string),
+				Data:    msg.Data,
+			}
+			for h, v := range msg.Header {
+				if slices.Contains(common.NATSHEADERS_DNSTAPIR_ALL, h) {
+					natsMsg.Headers[h] = v[0] // TODO use entire slice?
+				}
+			}
 			outCh <- natsMsg
 			msg.Ack()
 		}
@@ -109,8 +109,8 @@ func (nc *natsClient) Publish(msg string) error {
 	if err != nil {
 		return err
 	} else {
-        nc.log.Debug("Successful publish on '%s'", nc.outSubject)
-    }
+		nc.log.Debug("Successful publish on '%s'", nc.outSubject)
+	}
 
 	return nil
 }
@@ -134,11 +134,11 @@ func (nc *natsClient) initNats() error {
 	js, _ := jetstream.New(conn)
 	ctx := context.Background()
 
-	kv, err := js.CreateKeyValue(ctx, 
-        jetstream.KeyValueConfig{
-            Bucket: c_BUCKET_NAME,
-            LimitMarkerTTL: c_DEFAULT_TTL*time.Second, // TODO what is a good setting?
-        })
+	kv, err := js.CreateKeyValue(ctx,
+		jetstream.KeyValueConfig{
+			Bucket:         c_BUCKET_NAME,
+			LimitMarkerTTL: c_DEFAULT_TTL * time.Second, // TODO what is a good setting?
+		})
 	if err != nil {
 		nc.log.Error("Error creating key value store in NATS: %s", err)
 		return err
@@ -151,93 +151,93 @@ func (nc *natsClient) initNats() error {
 }
 
 func (nc *natsClient) CheckDomain(fqdn string) (bool, int64) {
-    ctx := context.Background()
+	ctx := context.Background()
 
-    subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, "")
+	subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, "")
 
 	_, err := nc.kv.Get(ctx, subject)
-    found := false
-    var whenAdded int64 = -1
+	found := false
+	var whenAdded int64 = -1
 
-    if err == nil {
-        found = true
-        nc.log.Debug("Entry for subject '%s' found", subject)
-    } else if errors.Is(err, jetstream.ErrKeyNotFound) {
-        nc.log.Debug("No entry for subject '%s'", subject)
-    } else {
-        nc.log.Error("Error accessing storage: %s, subject: %s", err, subject)
-    }
+	if err == nil {
+		found = true
+		nc.log.Debug("Entry for subject '%s' found", subject)
+	} else if errors.Is(err, jetstream.ErrKeyNotFound) {
+		nc.log.Debug("No entry for subject '%s'", subject)
+	} else {
+		nc.log.Error("Error accessing storage: %s, subject: %s", err, subject)
+	}
 
 	return found, whenAdded
 }
 
 func (nc *natsClient) StoreNewDomain(fqdn, thumbprint string) error {
-    ctx := context.Background()
-    alreadySeen, _ := nc.CheckDomain(fqdn)
+	ctx := context.Background()
+	alreadySeen, _ := nc.CheckDomain(fqdn)
 
-    if !alreadySeen {
-        /* Store permanently if this was the first time we saw the fqdn */
-        subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, "")
-        _, err := nc.kv.Put(ctx, subject, []byte(thumbprint))
-        if err != nil {
-            nc.log.Error("Error storing value for new subject '%s': %s", subject, err)
-            return err
-        } else {
-            nc.log.Debug("Stored info about %s for the first time", fqdn)
-        }
+	if !alreadySeen {
+		/* Store permanently if this was the first time we saw the fqdn */
+		subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, "")
+		_, err := nc.kv.Put(ctx, subject, []byte(thumbprint))
+		if err != nil {
+			nc.log.Error("Error storing value for new subject '%s': %s", subject, err)
+			return err
+		} else {
+			nc.log.Debug("Stored info about %s for the first time", fqdn)
+		}
 
-        /* Start a timer for the EDGE-specific event */
-        err = nc.RefreshNewQnameEvent(fqdn, thumbprint)
-        if err != nil {
-            nc.log.Error("Error starting expiry timer for %s", getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, thumbprint))
-            return err
-        }
-        // TODO also set "observations.fqdn.globally_new" since this was the
-        // first time we saw fqdn
-    }
+		/* Start a timer for the EDGE-specific event */
+		err = nc.RefreshNewQnameEvent(fqdn, thumbprint)
+		if err != nil {
+			nc.log.Error("Error starting expiry timer for %s", getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, thumbprint))
+			return err
+		}
+		// TODO also set "observations.fqdn.globally_new" since this was the
+		// first time we saw fqdn
+	}
 
 	return nil
 }
 
 func (nc *natsClient) RefreshNewQnameEvent(fqdn string, thumbprint string) error {
-    ctx := context.Background()
+	ctx := context.Background()
 
-    subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, thumbprint)
+	subject := getSubjectFromFqdn(c_SUBJECT_SCRATCHPAD_PREFIX, fqdn, thumbprint)
 
-    newlySeen := false /* newly seen by EDGE associated with "thumbprint", that is */
+	newlySeen := false /* newly seen by EDGE associated with "thumbprint", that is */
 	entry, err := nc.kv.Get(ctx, subject)
-    if err == nil {
-    } else if errors.Is(err, jetstream.ErrKeyNotFound) {
-        newlySeen = true
-    } else {
-        nc.log.Error("Error accessing storage: %s, subject: %s", err, subject)
-        return err
-    }
+	if err == nil {
+	} else if errors.Is(err, jetstream.ErrKeyNotFound) {
+		newlySeen = true
+	} else {
+		nc.log.Error("Error accessing storage: %s, subject: %s", err, subject)
+		return err
+	}
 
-    timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-    if newlySeen {
-        _, err := nc.kv.Create(
-            ctx,
-            subject,
-            []byte(timestamp),
-            jetstream.KeyTTL(c_DEFAULT_TTL*time.Second))
-        if err != nil {
-            nc.log.Error("Error creating key: %s. Subject: %s", err, subject)
-        }
-        return err
-    } else {
-        _, err := nc.kv.Update(
-            ctx,
-            subject,
-            []byte(timestamp),
-            entry.Revision())
-        if err != nil {
-            nc.log.Error("Error refreshing TTL: %s. Subject: %s", err, subject)
-        } else {
-            nc.log.Debug("Refreshed TTL for %s", subject)
-        }
-        return err
-    }
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	if newlySeen {
+		_, err := nc.kv.Create(
+			ctx,
+			subject,
+			[]byte(timestamp),
+			jetstream.KeyTTL(c_DEFAULT_TTL*time.Second))
+		if err != nil {
+			nc.log.Error("Error creating key: %s. Subject: %s", err, subject)
+		}
+		return err
+	} else {
+		_, err := nc.kv.Update(
+			ctx,
+			subject,
+			[]byte(timestamp),
+			entry.Revision())
+		if err != nil {
+			nc.log.Error("Error refreshing TTL: %s. Subject: %s", err, subject)
+		} else {
+			nc.log.Debug("Refreshed TTL for %s", subject)
+		}
+		return err
+	}
 
-    return nil
+	return nil
 }

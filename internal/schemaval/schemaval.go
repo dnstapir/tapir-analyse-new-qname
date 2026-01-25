@@ -69,7 +69,7 @@ func (s *schemaval) ValidateWithID(data []byte, id string) bool {
 	dataReader := bytes.NewReader(data)
 	obj, err := jsonschema.UnmarshalJSON(dataReader)
 	if err != nil {
-        s.log.Warning("Error unmarshalling byte stream into JSON object: %s", err)
+		s.log.Warning("Error unmarshalling byte stream into JSON object: %s", err)
 		return false
 	}
 
@@ -83,16 +83,16 @@ func (s *schemaval) ValidateWithID(data []byte, id string) bool {
 }
 
 func (s *schemaval) Validate(data []byte) (bool, string) {
-    matchedID := ""
-    ok := false
-    for id, _ := range s.schemaStore {
-        ok = s.ValidateWithID(data, id)
-        if ok {
-            s.log.Debug("Validation match with schema: %s", id)
-            matchedID = id
-            break
-        }
-    }
+	matchedID := ""
+	ok := false
+	for id, _ := range s.schemaStore {
+		ok = s.ValidateWithID(data, id)
+		if ok {
+			s.log.Debug("Validation match with schema: %s", id)
+			matchedID = id
+			break
+		}
+	}
 
 	return ok, matchedID
 }

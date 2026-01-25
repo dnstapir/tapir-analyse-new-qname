@@ -25,7 +25,7 @@ func TestGenerateObservationMsg(t *testing.T) {
 
 	conf := schemaval.Conf{
 		SchemaDir: testdata.SchemaDir,
-		Log:     log,
+		Log:       log,
 	}
 
 	sv, err := schemaval.Create(conf)

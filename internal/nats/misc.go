@@ -1,24 +1,24 @@
 package nats
 
 import (
-    "slices"
-    "strings"
+	"slices"
+	"strings"
 )
 
 /* If fqdn is "www.example.com", output will be "prefix.com.example.www.suffix" */
 func getSubjectFromFqdn(natsPrefix, fqdn, natsSuffix string) string {
-    fqdnSplit := slices.DeleteFunc(strings.Split(fqdn, "."),
-        func(s string) bool {return s == ""})
+	fqdnSplit := slices.DeleteFunc(strings.Split(fqdn, "."),
+		func(s string) bool { return s == "" })
 
-    if natsPrefix != "" {
-        fqdnSplit = append(fqdnSplit, natsPrefix)
-    }
+	if natsPrefix != "" {
+		fqdnSplit = append(fqdnSplit, natsPrefix)
+	}
 
-    if natsSuffix != "" {
-        fqdnSplit = append([]string{natsSuffix}, fqdnSplit...)
-    }
+	if natsSuffix != "" {
+		fqdnSplit = append([]string{natsSuffix}, fqdnSplit...)
+	}
 
-    slices.Reverse(fqdnSplit)
+	slices.Reverse(fqdnSplit)
 
-    return strings.Join(fqdnSplit, ".")
+	return strings.Join(fqdnSplit, ".")
 }

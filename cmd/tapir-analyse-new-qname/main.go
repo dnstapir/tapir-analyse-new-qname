@@ -24,13 +24,13 @@ const env_TAPIR_ANALYSE_NATS_URL = "TAPIR_ANALYSE_NATS_URL"
 
 type mainConf struct {
 	Nats      natsConf `toml:"nats"`
-    SchemaDir string   `toml:"schema_dir"`
+	SchemaDir string   `toml:"schema_dir"`
 }
 
 type natsConf struct {
 	Url        string `toml:"url"`
-    InSubject  string `toml:"in_subject"`
-    OutSubject string `toml:"out_subject"`
+	InSubject  string `toml:"in_subject"`
+	OutSubject string `toml:"out_subject"`
 }
 
 func main() {
@@ -88,19 +88,19 @@ func main() {
 	confDecoder.DisallowUnknownFields()
 	err = confDecoder.Decode(&conf)
 	if err != nil {
-        log.Error("Problem decoding config file: '%s', exiting...\n", err)
+		log.Error("Problem decoding config file: '%s', exiting...\n", err)
 		os.Exit(-1)
 	}
 
 	/* If set, environment variables override config file */
 	envNatsURL, exists := os.LookupEnv(env_TAPIR_ANALYSE_NATS_URL)
 	if exists && envNatsURL != "" {
-        log.Info("Envvar \"%s\" is set, will use it to connect to NATS", envNatsURL)
+		log.Info("Envvar \"%s\" is set, will use it to connect to NATS", envNatsURL)
 		conf.Nats.Url = envNatsURL
 	}
 
 	nConf := nats.Conf{
-        Log:        log,
+		Log:        log,
 		Url:        conf.Nats.Url,
 		InSubject:  conf.Nats.InSubject,
 		OutSubject: conf.Nats.OutSubject,
@@ -111,11 +111,11 @@ func main() {
 		os.Exit(-1)
 	}
 
-    vConf := schemaval.Conf{
-        SchemaDir: conf.SchemaDir,
-        Log: log,
-    }
-    val, err := schemaval.Create(vConf)
+	vConf := schemaval.Conf{
+		SchemaDir: conf.SchemaDir,
+		Log:       log,
+	}
+	val, err := schemaval.Create(vConf)
 	if err != nil {
 		log.Error("Error creating schema validator: '%s', exiting...\n", err)
 		os.Exit(-1)
@@ -128,10 +128,10 @@ func main() {
 	}
 
 	appConf := app.Conf{
-		Log:  log,
-		Nats: natsClient,
-        Validator: val,
-        Tapir: tapir,
+		Log:       log,
+		Nats:      natsClient,
+		Validator: val,
+		Tapir:     tapir,
 	}
 
 	application, err := app.Create(appConf)

@@ -12,7 +12,7 @@ type application struct {
 	log common.Logger
 	n   nats
 	t   tapir
-    v   validator
+	v   validator
 
 	isRunning bool
 	doneChan  chan error
@@ -62,18 +62,18 @@ func (a *application) Stop() error {
 }
 
 func (a *application) handleMsg(msg common.NatsMsg) {
-    a.log.Debug("Received message, payload size: %d bytes, # of headers: %d", len(msg.Data), len(msg.Headers))
-    defer a.log.Debug("Done handling message")
+	a.log.Debug("Received message, payload size: %d bytes, # of headers: %d", len(msg.Data), len(msg.Headers))
+	defer a.log.Debug("Done handling message")
 	if len(msg.Data) == 0 {
 		a.log.Debug("Msg had no data, probably garbage. Won't handle...")
 		return
 	}
 
-    ok, _ := a.v.Validate(msg.Data)
-    if !ok {
-        a.log.Warning("Invalid message")
-        return
-    }
+	ok, _ := a.v.Validate(msg.Data)
+	if !ok {
+		a.log.Warning("Invalid message")
+		return
+	}
 
 	msgDomain, err := a.t.ExtractDomain(string(msg.Data))
 	if err != nil {
@@ -84,19 +84,19 @@ func (a *application) handleMsg(msg common.NatsMsg) {
 
 	exists, _ := a.n.CheckDomain(msgDomain)
 
-    thumbprint, ok := msg.Headers[common.NATSHEADER_KEY_THUMBPRINT]
-    if !ok {
-        a.log.Error("Missing thumbprint for NEW_QNAME event")
-        return
-    }
+	thumbprint, ok := msg.Headers[common.NATSHEADER_KEY_THUMBPRINT]
+	if !ok {
+		a.log.Error("Missing thumbprint for NEW_QNAME event")
+		return
+	}
 
 	if exists {
-        err = a.n.RefreshNewQnameEvent(msgDomain, thumbprint)
-        if err != nil {
-            a.log.Error("Error refreshing TTL: %s", err)
-        } else {
-		    a.log.Debug("Handled event for existing domain '%s'", msgDomain)
-        }
+		err = a.n.RefreshNewQnameEvent(msgDomain, thumbprint)
+		if err != nil {
+			a.log.Error("Error refreshing TTL: %s", err)
+		} else {
+			a.log.Debug("Handled event for existing domain '%s'", msgDomain)
+		}
 	} else {
 		a.log.Info("Got event for unseen domain '%s'", msgDomain)
 
@@ -116,7 +116,7 @@ func (a *application) handleMsg(msg common.NatsMsg) {
 		if err != nil {
 			a.log.Error("Error publishing nats message!")
 		} else {
-            a.log.Debug("Published message: %s", string(outMsg))
-        }
+			a.log.Debug("Published message: %s", string(outMsg))
+		}
 	}
 }

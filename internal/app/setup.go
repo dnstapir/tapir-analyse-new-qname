@@ -10,7 +10,7 @@ type Conf struct {
 	Log       common.Logger
 	Nats      nats
 	Tapir     tapir
-    Validator validator
+	Validator validator
 }
 
 type nats interface {
@@ -27,7 +27,7 @@ type tapir interface {
 }
 
 type validator interface {
-    Validate(data []byte) (bool, string)
+	Validate(data []byte) (bool, string)
 }
 
 func Create(conf Conf) (*application, error) {
@@ -48,7 +48,7 @@ func Create(conf Conf) (*application, error) {
 		return nil, errors.New("nil tapir")
 	}
 
-    a.v = conf.Validator
+	a.v = conf.Validator
 	if a.v == nil {
 		return nil, errors.New("nil validator")
 	}
