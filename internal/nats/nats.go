@@ -131,7 +131,12 @@ func (nc *natsClient) initNats() error {
 		nc.log.Error("Error connecting to nats while setting up KV store: %s", err)
 		return err
 	}
-	js, _ := jetstream.New(conn)
+	js, err := jetstream.New(conn)
+    if err != nil {
+		nc.log.Error("Error creating jetstream handle: %s", err)
+        return err
+    }
+
 	ctx := context.Background()
 
 	kv, err := js.CreateKeyValue(ctx,
