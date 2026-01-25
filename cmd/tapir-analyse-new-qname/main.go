@@ -74,7 +74,7 @@ func main() {
 	log.Debug("Debug logging enabled")
 
 	file, err := os.Open(configFile)
-    defer file.Close()
+	defer file.Close()
 	if err != nil {
 		log.Error("Couldn't open config file '%s', exiting...\n", configFile)
 		os.Exit(-1)
@@ -143,10 +143,10 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-    defer func() {
-        signal.Stop(sigChan)
-	    close(sigChan)
-    }()
+	defer func() {
+		signal.Stop(sigChan)
+		close(sigChan)
+	}()
 
 	done := application.Run()
 

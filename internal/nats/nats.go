@@ -132,10 +132,10 @@ func (nc *natsClient) initNats() error {
 		return err
 	}
 	js, err := jetstream.New(conn)
-    if err != nil {
+	if err != nil {
 		nc.log.Error("Error creating jetstream handle: %s", err)
-        return err
-    }
+		return err
+	}
 
 	ctx := context.Background()
 
