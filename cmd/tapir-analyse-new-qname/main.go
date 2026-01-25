@@ -74,6 +74,7 @@ func main() {
 	log.Debug("Debug logging enabled")
 
 	file, err := os.Open(configFile)
+    defer file.Close()
 	if err != nil {
 		log.Error("Couldn't open config file '%s', exiting...\n", configFile)
 		os.Exit(-1)
