@@ -96,7 +96,7 @@ func main() {
 	/* If set, environment variables override config file */
 	envNatsURL, exists := os.LookupEnv(env_TAPIR_ANALYSE_NATS_URL)
 	if exists && envNatsURL != "" {
-		log.Info("Envvar \"%s\" is set, will use it to connect to NATS", envNatsURL)
+		log.Info("Envvar \"%s\" is set, will use it to connect to NATS", env_TAPIR_ANALYSE_NATS_URL)
 		conf.Nats.Url = envNatsURL
 	}
 
