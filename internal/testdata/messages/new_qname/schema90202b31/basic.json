@@ -1,0 +1,9 @@
+{
+    "flags": 33152,
+    "qclass": 1,
+    "qname": "basic.tapirtest.xa.",
+    "qtype": 28,
+    "timestamp": "2025-12-24T00:00:00Z",
+    "type": "new_qname",
+    "version": 0
+}

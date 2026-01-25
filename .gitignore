@@ -1,0 +1,9 @@
+# Ignore built binaries
+bin/
+out/
+
+# Ignore coverage reports
+coverage.out
+
+# Ignore configuration files
+*.toml
