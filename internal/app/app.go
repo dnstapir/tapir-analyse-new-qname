@@ -29,6 +29,10 @@ func (a *application) Run() <-chan error {
 		a.doneChan <- errors.New("error activating nats subscription")
 		a.isRunning = false
 	}
+    if msgChan == nil {
+		a.doneChan <- errors.New("msg chan error")
+		a.isRunning = false
+    }
 
 	go func() {
 		for {
