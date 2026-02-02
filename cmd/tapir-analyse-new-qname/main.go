@@ -149,6 +149,7 @@ func main() {
 	}()
 
 	done := application.Run()
+	log.Info("Up and running!")
 
 	select {
 	case s := <-sigChan:
