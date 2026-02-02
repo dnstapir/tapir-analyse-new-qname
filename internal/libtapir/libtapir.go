@@ -35,13 +35,13 @@ func (lt *libtapir) GenerateObservationMsg(domainStr string, flags uint32) (stri
 		Name:         domainStr,
 		TimeAdded:    time.Now(),
 		TTL:          3600,
-		TagMask:      1024,
+		TagMask:      tapir.TagMask(flags),
 		ExtendedTags: []string{},
 	}
 
 	tapirMsg := tapir.TapirMsg{
 		SrcName:   "dns-tapir",
-		Creator:   "",
+		Creator:   "tapir-analyse-new-qname",
 		MsgType:   "observation",
 		ListType:  "doubtlist",
 		Added:     []tapir.Domain{domain},

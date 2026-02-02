@@ -6,7 +6,7 @@ import (
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
 )
 
-var c_OBS_GLOBAL_NEW uint32 = 2048
+var c_OBS_GLOBAL_NEW uint32 = 1
 
 type application struct {
 	log common.Logger
