@@ -74,9 +74,9 @@ func (nc *natsClient) Subscribe() (<-chan common.NatsMsg, error) {
 
 	outCh := make(chan common.NatsMsg)
 	go func() {
-        nc.log.Info("Starting NATS listener loop")
+		nc.log.Info("Starting NATS listener loop")
 		for msg := range rawCh {
-            nc.log.Debug("Incoming NATS message on '%s'!", nc.inSubject)
+			nc.log.Debug("Incoming NATS message on '%s'!", nc.inSubject)
 			natsMsg := common.NatsMsg{
 				Headers: make(map[string]string),
 				Data:    msg.Data,
@@ -93,7 +93,7 @@ func (nc *natsClient) Subscribe() (<-chan common.NatsMsg, error) {
 		conn.Close()
 	}()
 
-    nc.log.Info("Subscribed to '%s'", nc.inSubject)
+	nc.log.Info("Subscribed to '%s'", nc.inSubject)
 
 	return outCh, nil
 }
