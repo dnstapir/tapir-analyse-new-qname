@@ -72,5 +72,5 @@ func (lt *libtapir) ExtractDomain(msgJson string) (string, error) {
 		return "", err
 	}
 
-	return string(newQnameEvent.Qname), nil
+	return strings.ToLower(string(newQnameEvent.Qname)), nil
 }
