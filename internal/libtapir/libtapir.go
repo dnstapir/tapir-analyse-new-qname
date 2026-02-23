@@ -1,18 +1,18 @@
 package libtapir
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/dnstapir/edm/pkg/protocols"
-	"github.com/dnstapir/tapir"
 
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
 )
 
 type Conf struct {
-	Log common.Logger
+	Log   common.Logger
+	Debug bool `toml:"debug"`
 }
 
 type libtapir struct {
@@ -22,47 +22,18 @@ type libtapir struct {
 func Create(conf Conf) (*libtapir, error) {
 	lt := new(libtapir)
 	if conf.Log == nil {
-		lt.log = common.FakeLogger{}
-	} else {
-		lt.log = conf.Log
+		return nil, common.ErrBadHandle
 	}
 
+	lt.log = conf.Log
+
+	lt.log.Debug("Libtapir debug logging enabled")
 	return lt, nil
 }
 
-func (lt *libtapir) GenerateObservationMsg(domainStr string, flags uint32) (string, error) {
-	domain := tapir.Domain{
-		Name:         domainStr,
-		TimeAdded:    time.Now(),
-		TTL:          3600,
-		TagMask:      tapir.TagMask(flags),
-		ExtendedTags: []string{},
-	}
-
-	tapirMsg := tapir.TapirMsg{
-		SrcName:   "dns-tapir",
-		Creator:   "tapir-analyse-new-qname",
-		MsgType:   "observation",
-		ListType:  "doubtlist",
-		Added:     []tapir.Domain{domain},
-		Removed:   []tapir.Domain{},
-		Msg:       "",
-		TimeStamp: time.Now(),
-		TimeStr:   "",
-	}
-
-	outMsg, err := json.Marshal(tapirMsg)
-	if err != nil {
-		lt.log.Error("Error serializing message, discarding...")
-		return "", err
-	}
-
-	return string(outMsg), nil
-}
-
-func (lt *libtapir) ExtractDomain(msgJson string) (string, error) {
+func (lt *libtapir) ExtractDomain(msgJson []byte) (string, error) {
 	var newQnameEvent protocols.NewQnameJSON
-	dec := json.NewDecoder(strings.NewReader(msgJson))
+	dec := json.NewDecoder(bytes.NewReader(msgJson))
 
 	dec.DisallowUnknownFields()
 
@@ -72,5 +43,5 @@ func (lt *libtapir) ExtractDomain(msgJson string) (string, error) {
 		return "", err
 	}
 
-	return strings.ToLower(string(newQnameEvent.Qname)), nil
+	return string(strings.Trim(newQnameEvent.Qname, ".")), nil
 }

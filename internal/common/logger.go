@@ -1,8 +1,8 @@
 package common
 
 type Logger interface {
-	Debug(fmtStr string, vals ...any)
-	Info(fmtStr string, vals ...any)
-	Warning(fmtStr string, vals ...any)
-	Error(fmtStr string, vals ...any)
+	Debug(string, ...any)
+	Info(string, ...any)
+	Warning(string, ...any)
+	Error(string, ...any)
 }

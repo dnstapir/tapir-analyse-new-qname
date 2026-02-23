@@ -1,43 +1,44 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/dnstapir/tapir-analyse-new-qname/internal/api"
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/app"
+	"github.com/dnstapir/tapir-analyse-new-qname/internal/cert"
+	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/libtapir"
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/logger"
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/nats"
-	"github.com/dnstapir/tapir-analyse-new-qname/internal/schemaval"
 )
 
+const env_DNSTAPIR_NATS_URL = "DNSTAPIR_NATS_URL"
+
 /* Rewritten if building with make */
-var version = "BAD-BUILD"
 var commit = "BAD-BUILD"
 
-const env_TAPIR_ANALYSE_NATS_URL = "TAPIR_ANALYSE_NATS_URL"
-
-type mainConf struct {
-	Nats      natsConf `toml:"nats"`
-	SchemaDir string   `toml:"schema_dir"`
-}
-
-type natsConf struct {
-	Url        string `toml:"url"`
-	InSubject  string `toml:"in_subject"`
-	OutSubject string `toml:"out_subject"`
+type conf struct {
+	app.Conf
+	Debug    bool          `toml:"debug"`
+	Api      api.Conf      `toml:"api"`
+	Cert     cert.Conf     `toml:"cert"`
+	Nats     nats.Conf     `toml:"nats"`
+	Libtapir libtapir.Conf `toml:"libtapir"`
 }
 
 func main() {
 	var configFile string
 	var runVersionCmd bool
 	var debugFlag bool
-	var conf mainConf
+	var mainConf conf
 
 	flag.BoolVar(&runVersionCmd,
 		"version",
@@ -45,8 +46,8 @@ func main() {
 		"Print version then exit",
 	)
 	flag.StringVar(&configFile,
-		"config-file",
-		"/etc/dnstapir/tapir-analyse-new-qname.toml",
+		"config",
+		"config.toml",
 		"Configuration file to use",
 	)
 	flag.BoolVar(&debugFlag,
@@ -64,109 +65,211 @@ func main() {
 		panic(fmt.Sprintf("Could not create logger, err: '%s'", err))
 	}
 
-	log.Info("tapir-analyse-new-qname version %s-%s", version, commit)
-
+	log.Info("tapir-analyse-new-qname, commit: '%s'", commit)
 	if runVersionCmd {
-		/* We've just printed the version, we are done */
 		os.Exit(0)
 	}
 
-	log.Debug("Debug logging enabled")
-
-	file, err := os.Open(configFile)
-	defer file.Close()
-	if err != nil {
-		log.Error("Couldn't open config file '%s', exiting...\n", configFile)
+	if configFile == "" {
+		log.Error("No config file specified, exiting...")
 		os.Exit(-1)
 	}
 
+	file, err := os.Open(configFile)
+	if err != nil {
+		log.Error("Couldn't open config file '%s', exiting...", configFile)
+		os.Exit(-1)
+	}
+	defer file.Close()
+
 	confDecoder := toml.NewDecoder(file)
 	if confDecoder == nil {
-		log.Error("Problem decoding config file '%s', exiting...\n", configFile)
+		log.Error("Problem creating decoder for config file '%s', exiting...", configFile)
 		os.Exit(-1)
 	}
 
 	confDecoder.DisallowUnknownFields()
-	err = confDecoder.Decode(&conf)
+	err = confDecoder.Decode(&mainConf)
 	if err != nil {
-		log.Error("Problem decoding config file: '%s', exiting...\n", err)
+		log.Error("Problem decoding config file '%s': %s", configFile, err)
 		os.Exit(-1)
 	}
 
-	/* If set, environment variables override config file */
-	envNatsURL, exists := os.LookupEnv(env_TAPIR_ANALYSE_NATS_URL)
-	if exists && envNatsURL != "" {
-		log.Info("Envvar \"%s\" is set, will use it to connect to NATS", env_TAPIR_ANALYSE_NATS_URL)
-		conf.Nats.Url = envNatsURL
-	}
+	debugFlag = debugFlag || mainConf.Debug
 
-	nConf := nats.Conf{
-		Log:        log,
-		Url:        conf.Nats.Url,
-		InSubject:  conf.Nats.InSubject,
-		OutSubject: conf.Nats.OutSubject,
-	}
-	natsClient, err := nats.Create(nConf)
+	/*
+	 ******************************************************************
+	 ********************** SET UP NATS *******************************
+	 ******************************************************************
+	 */
+	natslog, err := logger.Create(
+		logger.Conf{
+			Debug: debugFlag || mainConf.Nats.Debug,
+		})
 	if err != nil {
-		log.Error("Error creating NATS client: '%s', exiting...\n", err)
+		log.Error("Error creating nats log: %s", err)
 		os.Exit(-1)
 	}
 
-	vConf := schemaval.Conf{
-		SchemaDir: conf.SchemaDir,
-		Log:       log,
+	envNatsUrl, overrideNatsUrl := os.LookupEnv(env_DNSTAPIR_NATS_URL)
+	if overrideNatsUrl {
+		mainConf.Nats.Url = envNatsUrl
+		log.Info("Overriding NATS url with environment variable '%s'", env_DNSTAPIR_NATS_URL)
 	}
-	val, err := schemaval.Create(vConf)
+
+	mainConf.Nats.Log = natslog
+	natsHandle, err := nats.Create(mainConf.Nats)
 	if err != nil {
-		log.Error("Error creating schema validator: '%s', exiting...\n", err)
+		log.Error("Could not create NATS handle: %s", err)
 		os.Exit(-1)
 	}
 
-	tapir, err := libtapir.Create(libtapir.Conf{})
+	/*
+	 ******************************************************************
+	 ********************** SET UP LIBTAPIR ***************************
+	 ******************************************************************
+	 */
+	libtapirlog, err := logger.Create(
+		logger.Conf{
+			Debug: debugFlag || mainConf.Libtapir.Debug,
+		})
 	if err != nil {
-		log.Error("Error creating tapir library handle: '%s', exiting...\n", err)
+		log.Error("Error creating libtapir log: %s", err)
 		os.Exit(-1)
 	}
 
-	appConf := app.Conf{
-		Log:       log,
-		Nats:      natsClient,
-		Validator: val,
-		Tapir:     tapir,
-	}
-
-	application, err := app.Create(appConf)
+	mainConf.Libtapir.Log = libtapirlog
+	libtapirHandle, err := libtapir.Create(mainConf.Libtapir)
 	if err != nil {
-		log.Error("Error building application: '%s', exiting...\n", err)
+		log.Error("Could not create libtapir handle: %s", err)
 		os.Exit(-1)
 	}
 
+	/*
+	 ******************************************************************
+	 ********************** SET UP MAIN APP ***************************
+	 ******************************************************************
+	 */
+	applog, err := logger.Create(
+		logger.Conf{
+			Debug: debugFlag || mainConf.Debug,
+		})
+	if err != nil {
+		log.Error("Error creating app log: %s", err)
+		os.Exit(-1)
+	}
+
+	mainConf.Log = applog
+	mainConf.NatsHandle = natsHandle
+	mainConf.LibtapirHandle = libtapirHandle
+	appHandle, err := app.Create(mainConf.Conf)
+	if err != nil {
+		log.Error("Error creating application: '%s'", err)
+		os.Exit(-1)
+	}
+
+	/*
+	 ******************************************************************
+	 ********************** SET UP CERT HANDLER ***********************
+	 ******************************************************************
+	 */
+	certlog, err := logger.Create(
+		logger.Conf{
+			Debug: debugFlag || mainConf.Cert.Debug,
+		})
+	if err != nil {
+		log.Error("Error creating cert log: %s", err)
+		os.Exit(-1)
+	}
+
+	mainConf.Cert.Log = certlog
+	certHandle, err := cert.Create(mainConf.Cert)
+	if err != nil {
+		log.Error("Error creating cert manager: '%s'", err)
+		os.Exit(-1)
+	}
+
+	/*
+	 ******************************************************************
+	 ********************** SET UP API ********************************
+	 ******************************************************************
+	 */
+	apilog, err := logger.Create(
+		logger.Conf{
+			Debug: debugFlag || mainConf.Api.Debug,
+		})
+	if err != nil {
+		log.Error("Error creating API log: %s", err)
+		os.Exit(-1)
+	}
+	mainConf.Api.Log = apilog
+	mainConf.Api.App = appHandle
+	mainConf.Api.Certs = certHandle
+	apiHandle, err := api.Create(mainConf.Api)
+	if err != nil {
+		log.Error("Error creating API: '%s'", err)
+		os.Exit(-1)
+	}
+
+	/*
+	 ******************************************************************
+	 ********************** START RUNNING STUFF ***********************
+	 ******************************************************************
+	 */
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	defer func() {
-		signal.Stop(sigChan)
-		close(sigChan)
-	}()
+	defer close(sigChan)
+	defer signal.Stop(sigChan)
 
-	done := application.Run()
-	log.Info("Up and running!")
+	ctx, cancel := context.WithCancel(context.Background())
+	exitCh := make(chan common.Exit, 10) // TODO adjustable buffer?
 
-	select {
-	case s := <-sigChan:
-		log.Info("Got signal '%s', exiting...\n", s)
-	case err := <-done:
-		if err != nil {
-			log.Error("App exited with error: '%s'\n", err)
-		} else {
-			log.Info("Done!\n")
+	log.Info("Starting threads...")
+
+	var wg sync.WaitGroup
+	wg.Go(func() { appHandle.Run(ctx, exitCh) })
+	wg.Go(func() { apiHandle.Run(ctx, exitCh) })
+	wg.Go(func() { certHandle.Run(ctx, exitCh) })
+
+	log.Info("Threads started!")
+
+	exitLoop := false
+	for {
+		select {
+		case s, ok := <-sigChan:
+			if ok {
+				log.Info("Got signal '%s'", s)
+				exitLoop = true
+			} else {
+				log.Info("signal channel was closed")
+				sigChan = nil
+			}
+		case exit, ok := <-exitCh:
+			if ok {
+				if exit.Err != nil {
+					log.Error("%s exited with error: '%s'", exit.ID, exit.Err)
+					if exit.Err == common.ErrFatal {
+						exitLoop = true
+					}
+				} else {
+					log.Info("%s done!", exit.ID)
+				}
+			} else {
+				log.Warning("exit channel closed unexpectedly")
+				exitCh = nil
+			}
+		}
+		if exitLoop || (sigChan == nil && exitCh == nil) {
+			log.Info("Leaving toplevel loop")
+			break
 		}
 	}
 
-	err = application.Stop()
-	if err != nil {
-		log.Error("Error stopping app: '%s'\n", err)
-		os.Exit(-1)
-	}
+	log.Info("Cancelling threads")
+	cancel()
 
+	log.Info("Waiting for threads to finish")
+	wg.Wait()
+	log.Info("Exiting...")
 	os.Exit(0)
 }
