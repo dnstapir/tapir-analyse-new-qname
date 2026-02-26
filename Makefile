@@ -1,13 +1,13 @@
-VERSION:=$$(cat ./VERSION)
-COMMIT:=$$(git describe --dirty=+WiP --always 2> /dev/null || echo "no-vcs")
-OUT:=$$(pwd)/out
+VERSION:=$(shell cat ./VERSION)
+COMMIT:=$(shell git describe --dirty=+WiP --always 2> /dev/null || echo "no-vcs")
+OUT:=$(CURDIR)/out
 
-.PHONY:
+.PHONY: all build outdir test coverage fmt vet clean ko
 
 all: build
 
 build: outdir
-	go build -v -ldflags "-X 'main.version=$(VERSION)' -X 'main.commit=$(COMMIT)'" -o $(OUT)/ ./cmd/...
+	go build -v -ldflags "-X main.commit=$(COMMIT)" -o $(OUT)/ ./cmd/...
 
 outdir:
 	-mkdir -p $(OUT)
@@ -27,3 +27,6 @@ vet:
 
 clean:
 	-rm -rf $(OUT)
+
+ko:
+	ko build -L -B ./cmd/tapir-analyse-new-qname
