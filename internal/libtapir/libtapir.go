@@ -43,5 +43,5 @@ func (lt *libtapir) ExtractDomain(msgJson []byte) (string, error) {
 		return "", err
 	}
 
-	return string(strings.Trim(newQnameEvent.Qname, ".")), nil
+	return strings.ToLower(strings.Trim(newQnameEvent.Qname, ".")), nil
 }

@@ -66,7 +66,11 @@ func Create(conf Conf) (*appHandle, error) {
 	a.libtapirHandle = conf.LibtapirHandle
 
 	for _, s := range conf.IgnoreSuffixes {
-		a.ignoreSuffixes = append(a.ignoreSuffixes, strings.Trim(s, "."))
+		suf := "." + strings.ToLower(strings.Trim(s, "."))
+		if suf == "" {
+			continue
+		}
+		a.ignoreSuffixes = append(a.ignoreSuffixes, suf)
 	}
 
 	a.log.Debug("Main app debug logging enabled")
@@ -157,7 +161,7 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 	}
 
 	for _, s := range a.ignoreSuffixes {
-		if strings.HasSuffix(msgDomain, s) {
+		if msgDomain == s || strings.HasSuffix(msgDomain, "."+s) {
 			a.log.Debug("%s matches suffix %s, ignoring...", msgDomain, s)
 			return
 		}
