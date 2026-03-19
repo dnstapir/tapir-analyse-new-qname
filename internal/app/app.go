@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
+	"github.com/dnstapir/tapir-analyse-lib/common"
 )
 
 const c_N_HANDLERS = 3

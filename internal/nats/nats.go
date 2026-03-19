@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/dnstapir/tapir-analyse-new-qname/internal/common"
+	"github.com/dnstapir/tapir-analyse-lib/common"
 )
 
 // TODO find more suitable location to put the analyst identifier
