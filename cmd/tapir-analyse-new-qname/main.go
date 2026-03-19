@@ -124,10 +124,6 @@ func main() {
 		logger.Conf{
 			Debug: debugFlag || mainConf.Libtapir.Debug,
 		})
-	if err != nil {
-		log.Error("Error creating libtapir log: %s", err)
-		os.Exit(-1)
-	}
 
 	mainConf.Libtapir.Log = libtapirlog
 	libtapirHandle := libtapir.New(mainConf.Libtapir)
@@ -141,10 +137,6 @@ func main() {
 		logger.Conf{
 			Debug: debugFlag || mainConf.Debug,
 		})
-	if err != nil {
-		log.Error("Error creating app log: %s", err)
-		os.Exit(-1)
-	}
 
 	mainConf.Log = applog
 	mainConf.NatsHandle = natsHandle
@@ -164,10 +156,7 @@ func main() {
 		logger.Conf{
 			Debug: debugFlag || mainConf.Api.Debug,
 		})
-	if err != nil {
-		log.Error("Error creating API log: %s", err)
-		os.Exit(-1)
-	}
+
 	mainConf.Api.Log = apilog
 	mainConf.Api.App = appHandle
 	apiHandle, err := api.Create(mainConf.Api)
