@@ -11,25 +11,24 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/dnstapir/tapir-analyse-lib/common"
-	"github.com/dnstapir/tapir-analyse-lib/libtapir"
 	"github.com/dnstapir/tapir-analyse-lib/logger"
+	"github.com/dnstapir/tapir-analyse-lib/nats"
 
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/api"
 	"github.com/dnstapir/tapir-analyse-new-qname/internal/app"
-	"github.com/dnstapir/tapir-analyse-new-qname/internal/nats"
 )
 
 const env_DNSTAPIR_NATS_URL = "DNSTAPIR_NATS_URL"
+
+const c_ANALYST_IDENTIFIER = "tapir-analyse-new-qname"
 
 /* Rewritten if building with make */
 var commit = "BAD-BUILD"
 
 type conf struct {
 	app.Conf
-	Debug    bool          `toml:"debug"`
-	Api      api.Conf      `toml:"api"`
-	Nats     nats.Conf     `toml:"nats"`
-	Libtapir libtapir.Conf `toml:"libtapir"`
+	Api  api.Conf  `toml:"api"`
+	Nats nats.Conf `toml:"nats"`
 }
 
 func main() {
@@ -92,6 +91,9 @@ func main() {
 
 	debugFlag = debugFlag || mainConf.Debug
 
+	mainConf.AnalystID = c_ANALYST_IDENTIFIER
+	mainConf.Nats.AnalystID = c_ANALYST_IDENTIFIER
+
 	/*
 	 ******************************************************************
 	 ********************** SET UP NATS *******************************
@@ -117,19 +119,6 @@ func main() {
 
 	/*
 	 ******************************************************************
-	 ********************** SET UP LIBTAPIR ***************************
-	 ******************************************************************
-	 */
-	libtapirlog := logger.New(
-		logger.Conf{
-			Debug: debugFlag || mainConf.Libtapir.Debug,
-		})
-
-	mainConf.Libtapir.Log = libtapirlog
-	libtapirHandle := libtapir.New(mainConf.Libtapir)
-
-	/*
-	 ******************************************************************
 	 ********************** SET UP MAIN APP ***************************
 	 ******************************************************************
 	 */
@@ -140,7 +129,6 @@ func main() {
 
 	mainConf.Log = applog
 	mainConf.NatsHandle = natsHandle
-	mainConf.LibtapirHandle = libtapirHandle
 	appHandle, err := app.Create(mainConf.Conf)
 	if err != nil {
 		log.Error("Error creating application: '%s'", err)

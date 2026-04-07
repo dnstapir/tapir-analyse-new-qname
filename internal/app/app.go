@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/dnstapir/tapir-analyse-lib/common"
+	"github.com/dnstapir/tapir-analyse-lib/libtapir"
 )
 
 const c_N_HANDLERS = 3
@@ -13,9 +14,9 @@ const c_N_HANDLERS = 3
 type Conf struct {
 	Debug          bool     `toml:"debug"`
 	IgnoreSuffixes []string `toml:"ignore_suffixes"`
+	AnalystID      string
 	Log            common.Logger
 	NatsHandle     nats
-	LibtapirHandle libtapir
 }
 
 type appHandle struct {
@@ -23,7 +24,6 @@ type appHandle struct {
 	ignoreSuffixes []string
 	log            common.Logger
 	natsHandle     nats
-	libtapirHandle libtapir
 	exitCh         chan<- common.Exit
 	pm
 }
@@ -37,18 +37,13 @@ type job struct {
 
 type nats interface {
 	ActivateSubscription(context.Context) (<-chan common.NatsMsg, error)
-	SetObservationGloballyNew(context.Context, string) error
+	SetObservation(context.Context, string, string) error
 	AddDomain(context.Context, string, string) (bool, error)
 	Shutdown() error
 }
 
-type libtapir interface {
-	ExtractDomain([]byte) (string, error)
-}
-
 func Create(conf Conf) (*appHandle, error) {
 	a := new(appHandle)
-	a.id = "main app"
 
 	if conf.Log == nil {
 		return nil, common.ErrBadHandle
@@ -60,13 +55,14 @@ func Create(conf Conf) (*appHandle, error) {
 	}
 	a.natsHandle = conf.NatsHandle
 
-	if conf.LibtapirHandle == nil {
-		return nil, common.ErrBadHandle
+	if conf.AnalystID == "" {
+		a.log.Error("Bad analyst ID when creating new-qname analyst")
+		return nil, common.ErrBadParam
 	}
-	a.libtapirHandle = conf.LibtapirHandle
+	a.id = conf.AnalystID
 
 	for _, s := range conf.IgnoreSuffixes {
-		suf := "." + strings.ToLower(strings.Trim(s, "."))
+		suf := libtapir.NormalizeDomainNameSuffix(s)
 		if suf == "" {
 			continue
 		}
@@ -154,14 +150,14 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 	//	}
 	//
 
-	msgDomain, err := a.libtapirHandle.ExtractDomain(msg.Data)
+	msgDomain, err := libtapir.ExtractDomain(msg.Data)
 	if err != nil {
 		a.log.Error("Error reading domain from message: %s", err)
 		return
 	}
 
 	for _, s := range a.ignoreSuffixes {
-		if msgDomain == s || strings.HasSuffix(msgDomain, "."+s) {
+		if msgDomain == s || strings.HasSuffix(msgDomain, s) {
 			a.log.Debug("%s matches suffix %s, ignoring...", msgDomain, s)
 			return
 		}
@@ -186,7 +182,7 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 	} else {
 		a.log.Info("Got event for unseen domain '%s'", msgDomain)
 
-		err = a.natsHandle.SetObservationGloballyNew(ctx, msgDomain)
+		err = a.natsHandle.SetObservation(ctx, msgDomain, common.OBS_GLOBALLY_NEW)
 		if err != nil {
 			a.log.Error("Error setting globally_new observation for %s in NATS: %s", msgDomain, err)
 			return
