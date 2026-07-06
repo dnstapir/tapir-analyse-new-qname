@@ -168,15 +168,6 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 		}
 	}
 
-	if a.includeInvalidETLDs {
-		/* Just continue */
-	} else {
-		if !libtapir.HasValidETLD(msgDomain) {
-			a.log.Debug("%s has invalid eTLD, will not generate observation", msgDomain)
-			return
-		}
-	}
-
 	thumbprint, ok := msg.Headers[common.NATSHEADER_KEY_THUMBPRINT]
 	if !ok {
 		a.log.Error("Missing thumbprint for NEW_QNAME event, discarding...")
@@ -195,6 +186,15 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 		return
 	} else {
 		a.log.Info("Got event for unseen domain '%s'", msgDomain)
+
+		if a.includeInvalidETLDs {
+			/* Just continue */
+		} else {
+			if !libtapir.HasValidETLD(msgDomain) {
+				a.log.Debug("%s has invalid eTLD, will not generate observation. Done handling event.", msgDomain)
+				return
+			}
+		}
 
 		err = a.natsHandle.SetObservation(ctx, msgDomain, common.OBS_GLOBALLY_NEW)
 		if err != nil {
