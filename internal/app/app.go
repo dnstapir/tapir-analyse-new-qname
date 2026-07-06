@@ -12,19 +12,21 @@ import (
 const c_N_HANDLERS = 3
 
 type Conf struct {
-	Debug          bool     `toml:"debug"`
-	IgnoreSuffixes []string `toml:"ignore_suffixes"`
-	AnalystID      string
-	Log            common.Logger
-	NatsHandle     nats
+	Debug               bool     `toml:"debug"`
+	IgnoreSuffixes      []string `toml:"ignore_suffixes"`
+	IncludeInvalidETLDs bool     `toml:"include_invalid_etlds"`
+	AnalystID           string
+	Log                 common.Logger
+	NatsHandle          nats
 }
 
 type appHandle struct {
-	id             string
-	ignoreSuffixes []string
-	log            common.Logger
-	natsHandle     nats
-	exitCh         chan<- common.Exit
+	id                  string
+	includeInvalidETLDs bool
+	ignoreSuffixes      []string
+	log                 common.Logger
+	natsHandle          nats
+	exitCh              chan<- common.Exit
 	pm
 }
 
@@ -60,6 +62,9 @@ func Create(conf Conf) (*appHandle, error) {
 		return nil, common.ErrBadParam
 	}
 	a.id = conf.AnalystID
+
+	a.includeInvalidETLDs = conf.IncludeInvalidETLDs
+	a.log.Debug("Observations will be sent out for invalid eTLDs: %t", a.includeInvalidETLDs)
 
 	for _, s := range conf.IgnoreSuffixes {
 		suf := libtapir.NormalizeDomainNameSuffix(s)
@@ -159,6 +164,15 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 	for _, s := range a.ignoreSuffixes {
 		if msgDomain == s || strings.HasSuffix(msgDomain, s) {
 			a.log.Debug("%s matches suffix %s, ignoring...", msgDomain, s)
+			return
+		}
+	}
+
+	if a.includeInvalidETLDs {
+		/* Just continue */
+	} else {
+		if !libtapir.HasValidETLD(msgDomain) {
+			a.log.Debug("%s has invalid eTLD, will not generate observation", msgDomain)
 			return
 		}
 	}
