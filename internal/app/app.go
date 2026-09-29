@@ -1,20 +1,26 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dnstapir/tapir-analyse-lib/common"
 	"github.com/dnstapir/tapir-analyse-lib/libtapir"
 )
 
 const c_N_HANDLERS = 3
+const c_DEFAULT_MULTI_NEW_THRESHOLD = 4
+const c_DEFAULT_MULTI_NEW_WINDOW = 10 * time.Second
 
 type Conf struct {
-	Debug               bool     `toml:"debug"`
-	IgnoreSuffixes      []string `toml:"ignore_suffixes"`
-	IncludeInvalidETLDs bool     `toml:"include_invalid_etlds"`
+	Debug               bool          `toml:"debug"`
+	IgnoreSuffixes      []string      `toml:"ignore_suffixes"`
+	IncludeInvalidETLDs bool          `toml:"include_invalid_etlds"`
+	MultiNewThreshold   int           `toml:"multi_new_threshold"`
+	MultiNewWindow      time.Duration `toml:"multi_new_window"` // e.g. "10s", "1m"
 	AnalystID           string
 	Log                 common.Logger
 	NatsHandle          nats
@@ -28,6 +34,9 @@ type appHandle struct {
 	natsHandle          nats
 	exitCh              chan<- common.Exit
 	pm
+	tracker           *qnameTracker
+	multiNewThreshold int
+	multiNewWindow    time.Duration
 }
 
 type pm struct {
@@ -35,6 +44,60 @@ type pm struct {
 
 type job struct {
 	msg common.NatsMsg
+}
+
+type qnameTracker struct {
+	mu   sync.Mutex
+	ttl  time.Duration
+	data map[string]map[string]time.Time
+}
+
+func newQnameTracker(ttl time.Duration) *qnameTracker {
+	return &qnameTracker{
+		ttl:  ttl,
+		data: make(map[string]map[string]time.Time),
+	}
+}
+
+func (t *qnameTracker) Record(qname, edgeID string, now time.Time) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	edges, ok := t.data[qname]
+	if !ok {
+		edges = make(map[string]time.Time)
+		t.data[qname] = edges
+	}
+	edges[edgeID] = now
+
+	cutoff := now.Add(-t.ttl)
+	for id, seenAt := range edges {
+		if seenAt.Before(cutoff) {
+			delete(edges, id)
+		}
+	}
+	return len(edges)
+}
+
+func (t *qnameTracker) Sweep(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	cutoff := now.Add(-t.ttl)
+	for qname, edges := range t.data {
+		for id, seenAt := range edges {
+			if seenAt.Before(cutoff) {
+				delete(edges, id)
+			}
+		}
+		if len(edges) == 0 {
+			delete(t.data, qname)
+		}
+	}
+}
+
+func (t *qnameTracker) sweepInterval() time.Duration {
+	return max(t.ttl/2, time.Second)
 }
 
 type nats interface {
@@ -65,6 +128,12 @@ func Create(conf Conf) (*appHandle, error) {
 
 	a.includeInvalidETLDs = conf.IncludeInvalidETLDs
 	a.log.Debug("Observations will be sent out for invalid eTLDs: %t", a.includeInvalidETLDs)
+
+	a.multiNewThreshold = cmp.Or(conf.MultiNewThreshold, c_DEFAULT_MULTI_NEW_THRESHOLD)
+	a.multiNewWindow = cmp.Or(conf.MultiNewWindow, c_DEFAULT_MULTI_NEW_WINDOW)
+	a.log.Debug("Multi-new threshold: %d edges within %s", a.multiNewThreshold, a.multiNewWindow)
+
+	a.tracker = newQnameTracker(a.multiNewWindow)
 
 	for _, s := range conf.IgnoreSuffixes {
 		suf := libtapir.NormalizeDomainNameSuffix(s)
@@ -101,6 +170,20 @@ func (a *appHandle) Run(ctx context.Context, exitCh chan<- common.Exit) {
 			a.log.Info("Worker done!")
 		})
 	}
+
+	// MultiNew: periodically drop expired edges and empty qnames
+	wg.Go(func() {
+		tick := time.NewTicker(a.tracker.sweepInterval())
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				a.tracker.Sweep(time.Now())
+			case <-ctx.Done():
+				return
+			}
+		}
+	})
 
 MAIN_APP_LOOP:
 	for {
@@ -180,27 +263,34 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 		return
 	}
 
-	if alreadyExists {
-		// TODO multi-new logic here
-		a.log.Debug("Handled event for existing domain '%s'", msgDomain)
+	if !a.includeInvalidETLDs && !libtapir.HasValidETLD(msgDomain) {
+		a.log.Debug("%s has invalid eTLD, ignoring", msgDomain)
 		return
-	} else {
+	}
+
+	edgeCount := a.tracker.Record(msgDomain, thumbprint, time.Now())
+
+	// set OBS_GLOBALLY_NEW
+	if !alreadyExists {
 		a.log.Info("Got event for unseen domain '%s'", msgDomain)
-
-		if a.includeInvalidETLDs {
-			/* Just continue */
-		} else {
-			if !libtapir.HasValidETLD(msgDomain) {
-				a.log.Debug("%s has invalid eTLD, will not generate observation. Done handling event.", msgDomain)
-				return
-			}
-		}
-
 		err = a.natsHandle.SetObservation(ctx, msgDomain, common.OBS_GLOBALLY_NEW)
 		if err != nil {
 			a.log.Error("Error setting globally_new observation for %s in NATS: %s", msgDomain, err)
 			return
+		} else {
+			a.log.Info("Handled event for new domain '%s', globally_new set", msgDomain)
 		}
-		a.log.Debug("Handled event for new domain '%s'", msgDomain)
 	}
+
+	// set OBS_MULTI_NEW
+	if edgeCount == a.multiNewThreshold {
+		err = a.natsHandle.SetObservation(ctx, msgDomain, common.OBS_MULTI_NEW)
+		if err != nil {
+			a.log.Error("Error setting multi_new observation for %s in NATS: %s", msgDomain, err)
+			return
+		} else {
+			a.log.Info("New domain '%s' seen by %d edges within %s, multi_new set", msgDomain, edgeCount, a.multiNewWindow)
+		}
+	}
+
 }
