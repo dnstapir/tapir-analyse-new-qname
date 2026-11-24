@@ -3,7 +3,7 @@ module github.com/dnstapir/tapir-analyse-new-qname
 go 1.26.1
 
 require (
-	github.com/dnstapir/tapir-analyse-lib v0.0.0-20261110153448-983b88dd3580
+	github.com/dnstapir/tapir-analyse-lib v0.0.0-20261123084241-3e78c509835b
 	github.com/pelletier/go-toml/v2 v2.2.4
 )
 
