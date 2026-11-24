@@ -3,7 +3,7 @@ module github.com/dnstapir/tapir-analyse-new-qname
 go 1.26.1
 
 require (
-	github.com/dnstapir/tapir-analyse-lib v0.0.0-20261123084241-3e78c509835b
+	github.com/dnstapir/tapir-analyse-lib v0.0.0-20261124142539-0c7e0d517dbb
 	github.com/pelletier/go-toml/v2 v2.2.4
 )
 
@@ -15,10 +15,10 @@ require (
 	github.com/nats-io/nats.go v1.53.1 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/tools v0.52.0 // indirect
 )
