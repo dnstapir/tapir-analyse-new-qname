@@ -16,11 +16,11 @@ const c_DEFAULT_MULTI_NEW_THRESHOLD = 4
 const c_DEFAULT_MULTI_NEW_WINDOW = 10 * time.Second
 
 type Conf struct {
-	Debug               bool          `toml:"debug"`
-	IgnoreSuffixes      []string      `toml:"ignore_suffixes"`
-	IncludeInvalidETLDs bool          `toml:"include_invalid_etlds"`
-	MultiNewThreshold   int           `toml:"multi_new_threshold"`
-	MultiNewWindow      time.Duration `toml:"multi_new_window"` // e.g. "10s", "1m"
+	Debug               bool     `toml:"debug"`
+	IgnoreSuffixes      []string `toml:"ignore_suffixes"`
+	IncludeInvalidETLDs bool     `toml:"include_invalid_etlds"`
+	MultiNewThreshold   int      `toml:"multi_new_threshold"`
+	MultiNewWindow      Duration `toml:"multi_new_window"` // e.g. "10s", "1m"
 	AnalystID           string
 	Log                 common.Logger
 	NatsHandle          nats
@@ -44,6 +44,17 @@ type pm struct {
 
 type job struct {
 	msg common.NatsMsg
+}
+
+// wrapper type to parse tim.Duration from string in config
+type Duration struct {
+	time.Duration
+}
+
+func (d *Duration) UnmarshalText(text []byte) error {
+	var err error
+	d.Duration, err = time.ParseDuration(string(text))
+	return err
 }
 
 type qnameTracker struct {
@@ -130,7 +141,7 @@ func Create(conf Conf) (*appHandle, error) {
 	a.log.Debug("Observations will be sent out for invalid eTLDs: %t", a.includeInvalidETLDs)
 
 	a.multiNewThreshold = cmp.Or(conf.MultiNewThreshold, c_DEFAULT_MULTI_NEW_THRESHOLD)
-	a.multiNewWindow = cmp.Or(conf.MultiNewWindow, c_DEFAULT_MULTI_NEW_WINDOW)
+	a.multiNewWindow = cmp.Or(conf.MultiNewWindow.Duration, c_DEFAULT_MULTI_NEW_WINDOW)
 	a.log.Debug("Multi-new threshold: %d edges within %s", a.multiNewThreshold, a.multiNewWindow)
 
 	a.tracker = newQnameTracker(a.multiNewWindow)
