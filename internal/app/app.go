@@ -29,7 +29,7 @@ type Conf struct {
 type appHandle struct {
 	id                  string
 	includeInvalidETLDs bool
-	ignoreSuffixes      []string
+	ignoreSuffixes      syncSet
 	log                 common.Logger
 	natsHandle          nats
 	exitCh              chan<- common.Exit
@@ -37,6 +37,11 @@ type appHandle struct {
 	tracker           *qnameTracker
 	multiNewThreshold int
 	multiNewWindow    time.Duration
+}
+
+type syncSet struct {
+	sync.RWMutex
+	s map[string]struct{}
 }
 
 type pm struct {
@@ -146,12 +151,15 @@ func Create(conf Conf) (*appHandle, error) {
 
 	a.tracker = newQnameTracker(a.multiNewWindow)
 
+	a.ignoreSuffixes.Lock()
+	a.ignoreSuffixes.s = make(map[string]struct{})
+	defer a.ignoreSuffixes.Unlock()
 	for _, s := range conf.IgnoreSuffixes {
 		suf := libtapir.NormalizeDomainNameSuffix(s)
 		if suf == "" {
 			continue
 		}
-		a.ignoreSuffixes = append(a.ignoreSuffixes, suf)
+		a.ignoreSuffixes.s[suf] = struct{}{}
 	}
 
 	a.log.Debug("Main app debug logging enabled")
@@ -255,7 +263,14 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 		return
 	}
 
-	for _, s := range a.ignoreSuffixes {
+	if !a.includeInvalidETLDs && !libtapir.HasValidETLD(msgDomain) {
+		a.log.Debug("%s has invalid eTLD, ignoring", msgDomain)
+		return
+	}
+
+	a.ignoreSuffixes.RLock()
+	defer a.ignoreSuffixes.RUnlock()
+	for s, _ := range a.ignoreSuffixes.s {
 		if msgDomain == s || strings.HasSuffix(msgDomain, s) {
 			a.log.Debug("%s matches suffix %s, ignoring...", msgDomain, s)
 			return
@@ -268,30 +283,31 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 		return
 	}
 
-	alreadyExists, err := a.natsHandle.AddDomain(ctx, msgDomain, thumbprint)
+	etldPlusOne, err := libtapir.GetETLDPlusOne(msgDomain)
+	if err != nil {
+		a.log.Error("Could not extract eTLD+1, discarding...")
+		return
+	}
+
+	alreadyExists, err := a.natsHandle.AddDomain(ctx, etldPlusOne, thumbprint)
 	if err != nil {
 		a.log.Error("Couldn't update seen domains: %s", err)
 		return
 	}
 
-	if !a.includeInvalidETLDs && !libtapir.HasValidETLD(msgDomain) {
-		a.log.Debug("%s has invalid eTLD, ignoring", msgDomain)
-		return
+	// set OBS_GLOBALLY_NEW
+	if !alreadyExists {
+		a.log.Info("Got event for domain '%s' with new eTLD+1", msgDomain)
+		err = a.natsHandle.SetObservation(ctx, etldPlusOne, common.OBS_GLOBALLY_NEW)
+		if err != nil {
+			a.log.Error("Error setting globally_new observation for %s in NATS: %s", etldPlusOne, err)
+			return
+		} else {
+			a.log.Debug("Handled event for new domain '%s', globally_new set for its eTLD+1", msgDomain)
+		}
 	}
 
 	edgeCount := a.tracker.Record(msgDomain, thumbprint, time.Now())
-
-	// set OBS_GLOBALLY_NEW
-	if !alreadyExists {
-		a.log.Info("Got event for unseen domain '%s'", msgDomain)
-		err = a.natsHandle.SetObservation(ctx, msgDomain, common.OBS_GLOBALLY_NEW)
-		if err != nil {
-			a.log.Error("Error setting globally_new observation for %s in NATS: %s", msgDomain, err)
-			return
-		} else {
-			a.log.Info("Handled event for new domain '%s', globally_new set", msgDomain)
-		}
-	}
 
 	// set OBS_MULTI_NEW
 	if edgeCount == a.multiNewThreshold {
