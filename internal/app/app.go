@@ -19,6 +19,7 @@ type Conf struct {
 	Debug               bool     `toml:"debug"`
 	IgnoreSuffixes      []string `toml:"ignore_suffixes"`
 	IncludeInvalidETLDs bool     `toml:"include_invalid_etlds"`
+	StoreAllLabels      bool     `toml:"store_all_labels"`
 	MultiNewThreshold   int      `toml:"multi_new_threshold"`
 	MultiNewWindow      Duration `toml:"multi_new_window"` // e.g. "10s", "1m"
 	AnalystID           string
@@ -29,6 +30,7 @@ type Conf struct {
 type appHandle struct {
 	id                  string
 	includeInvalidETLDs bool
+	storeAllLabels      bool
 	ignoreSuffixes      syncSet
 	log                 common.Logger
 	natsHandle          nats
@@ -143,7 +145,10 @@ func Create(conf Conf) (*appHandle, error) {
 	a.id = conf.AnalystID
 
 	a.includeInvalidETLDs = conf.IncludeInvalidETLDs
-	a.log.Debug("Observations will be sent out for invalid eTLDs: %t", a.includeInvalidETLDs)
+	a.log.Info("Observations will be sent out for invalid eTLDs: %t", a.includeInvalidETLDs)
+
+	a.storeAllLabels = conf.StoreAllLabels
+	a.log.Info("GLOBALLY_NEW will only be sent out when eTLD+1 is new: %t", !a.storeAllLabels)
 
 	a.multiNewThreshold = cmp.Or(conf.MultiNewThreshold, c_DEFAULT_MULTI_NEW_THRESHOLD)
 	a.multiNewWindow = cmp.Or(conf.MultiNewWindow.Duration, c_DEFAULT_MULTI_NEW_WINDOW)
@@ -285,11 +290,21 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 
 	etldPlusOne, err := libtapir.GetETLDPlusOne(msgDomain)
 	if err != nil {
-		a.log.Error("Could not extract eTLD+1, discarding...")
-		return
+		if a.storeAllLabels {
+			a.log.Debug("Ignoring failed extraction of eTLD+1, using all labels anyway")
+			err = nil
+		} else {
+			a.log.Error("Could not extract eTLD+1, discarding...")
+			return
+		}
 	}
 
-	alreadyExists, err := a.natsHandle.AddDomain(ctx, etldPlusOne, thumbprint)
+	domainToObserve := etldPlusOne
+	if a.storeAllLabels {
+		domainToObserve = msgDomain
+	}
+
+	alreadyExists, err := a.natsHandle.AddDomain(ctx, domainToObserve, thumbprint)
 	if err != nil {
 		a.log.Error("Couldn't update seen domains: %s", err)
 		return
@@ -297,13 +312,13 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 
 	// set OBS_GLOBALLY_NEW
 	if !alreadyExists {
-		a.log.Info("Got event for domain '%s' with new eTLD+1", msgDomain)
-		err = a.natsHandle.SetObservation(ctx, etldPlusOne, common.OBS_GLOBALLY_NEW)
+		a.log.Debug("Got event for new domain '%s'", msgDomain)
+		err = a.natsHandle.SetObservation(ctx, domainToObserve, common.OBS_GLOBALLY_NEW)
 		if err != nil {
-			a.log.Error("Error setting globally_new observation for %s in NATS: %s", etldPlusOne, err)
+			a.log.Error("Error setting globally_new observation for %s in NATS: %s", domainToObserve, err)
 			return
 		} else {
-			a.log.Debug("Handled event for new domain '%s', globally_new set for its eTLD+1", msgDomain)
+			a.log.Debug("Handled event for new domain '%s', globally_new set", domainToObserve)
 		}
 	}
 
@@ -316,7 +331,7 @@ func (a *appHandle) handleMsg(ctx context.Context, msg common.NatsMsg) {
 			a.log.Error("Error setting multi_new observation for %s in NATS: %s", msgDomain, err)
 			return
 		} else {
-			a.log.Info("New domain '%s' seen by %d edges within %s, multi_new set", msgDomain, edgeCount, a.multiNewWindow)
+			a.log.Debug("New domain '%s' seen by %d edges within %s, multi_new set", msgDomain, edgeCount, a.multiNewWindow)
 		}
 	}
 
